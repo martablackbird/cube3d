@@ -1,0 +1,26 @@
+{
+  "name": "cube-three-app",
+  "version": "1.0.0",
+  "description": "Three.js Cube Scene with Bloom & GLTF using Webpack",
+  "main": "index.js",
+  "scripts": {
+    "start": "webpack serve --mode development --open",
+    "build": "webpack --mode production"
+  },
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "gsap": "^3.13.0",
+    "three": "^0.160.1"
+  },
+  "devDependencies": {
+    "css-loader": "^6.8.1",
+    "html-webpack-plugin": "^5.5.3",
+    "sass": "^1.89.2",
+    "sass-loader": "^16.0.5",
+    "style-loader": "^3.3.4",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1"
+  }
+}

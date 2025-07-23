@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cube 3D</title>
+</head>
+
+<body>
+  <div id="head"></div>
+  <div class="main__bg"></div>
+  <div class="viewport">
+    <div class="scroll-container">
+      <header class="header">
+
+      </header>
+      <main class="main">
+        <header class="head"></header>
+      </main>
+    </div>
+  </div>
+
+  <script type="x-shader/x-vertex" id="vertexshader">
+    varying vec2 vUv;
+
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  </script>
+
+
+  <script type="x-shader/x-fragment" id="fragmentshader">
+    precision mediump float;
+
+    uniform sampler2D baseTexture;
+    uniform sampler2D bloomTexture;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 baseColor = texture(baseTexture, vUv);
+      vec3 bloomColor = texture(bloomTexture, vUv).rgb;
+
+      float bloomStrength = sqrt(dot(bloomColor, vec3(0.333)));
+      float finalAlpha = max(baseColor.a, bloomStrength);
+
+      gl_FragColor = vec4(baseColor.rgb + bloomColor, finalAlpha);
+    }
+  </script>
+
+
+</body>
+
+</html>
