@@ -224,9 +224,11 @@ class Cube {
 
     //event listener for scroll ratio
     window.addEventListener("scroll", () => {
-      const scrollTop = window.scrollY || window.pageYOffset;
-      const docHeight = document.body.scrollHeight - window.innerHeight;
-      this.scrollRatio = scrollTop / docHeight;
+      const scrollTop = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const ratio = scrollTop / docHeight;
+
+      this.scrollRatio = Math.min(Math.max(ratio, 0), 1);
     });
 
   }
@@ -340,9 +342,6 @@ class Cube {
       (gltf) => {
         const model = gltf.scene;
 
-        console.log('Loaded animations:', gltf.animations.map(a => a.name));
-        console.log('Total mixers:', this.mixers.length);
-        console.log('Scene graph:');
         gltf.scene.traverse(o => console.log('-', o.name));
 
         if (model.children[13]) {
@@ -357,12 +356,7 @@ class Cube {
 
         this.scene.add(model);
 
-        console.log("Loaded animations: ", gltf.animations.map(a => a.name));
-        console.log("Scene graph:");
         model.children.forEach(child => console.log("-", child.name));
-        gltf.animations.forEach(clip => {
-          console.log("Track:", clip.tracks.map(t => t.name));
-        });
 
         gltf.animations.forEach(clip => {
           const trackName = clip.tracks[0]?.name || '';
@@ -374,11 +368,12 @@ class Cube {
             const action = mixer.clipAction(clip);
             action.clampWhenFinished = true;
             action.setLoop(THREE.LoopOnce);
+            action.enabled = true;
             action.play();
 
             this.mixers.push(mixer);
           } else {
-            console.warn(`❗Target node not found for ${clip.name}`);
+            console.warn(`Target node not found for ${clip.name}`);
           }
         });
 
@@ -423,14 +418,33 @@ class Cube {
     this.scene.traverse((obj) => this.restoreMaterial(obj));
     this.finalComposer.render();
 
-    this.mixers.forEach((mixer, index) => {
-      const actions = mixer._actions;
-      if (actions && actions[0]) {
-        const duration = actions[0]._clip.duration;
-        const currentTime = this.scrollRatio * duration;
-        mixer.setTime(currentTime);
+    const ratio = Math.min(Math.max(this.scrollRatio, 0), 1);
 
-        console.log(`Mixer ${index}: time=${currentTime.toFixed(2)} / ${duration.toFixed(2)}`);
+    this.mixers.forEach((mixer, index) => {
+    const actions = mixer._actions;
+
+    if (actions && actions.length > 0) {
+        const duration = actions[0]._clip.duration;
+        const maxRatio = 0.98;
+        const ratio = Math.min(Math.max(this.scrollRatio, 0), 1);
+        const currentTime = ratio * duration;
+
+        actions.forEach((action) => {
+          if (!action.enabled) {
+            action.reset();
+            action.enabled = true;
+            action.play(); 
+          }
+
+          // Force pause
+          if (this.scrollRatio >= maxRatio && this.scrollDirection === "down") {
+            action.paused = true;
+          } else {
+            action.paused = false;
+          }
+        });
+
+        mixer.setTime(currentTime);
       }
     });
 
