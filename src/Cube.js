@@ -205,6 +205,9 @@ class Cube {
     this.first_update = true;
     this.height = 1.4 * sc.height;
     this.top = -.2 * sc.height + "px";
+    this.scrollRatio = 0;
+    this.prevScrollRatio = 0;
+    this.actions = [];
   }
 
   init() {
@@ -218,6 +221,14 @@ class Cube {
     sc.addUpdate((e) => {
       this.update(e);
     });
+
+    //event listener for scroll ratio
+    window.addEventListener("scroll", () => {
+      const scrollTop = window.scrollY || window.pageYOffset;
+      const docHeight = document.body.scrollHeight - window.innerHeight;
+      this.scrollRatio = scrollTop / docHeight;
+    });
+
   }
 
   initScene() {
@@ -299,7 +310,6 @@ class Cube {
     this.controls.enableRotate = false;
     this.controls.dampingFactor = 0.05;
     this.controls.target.set(0, 1.2, 0);
-    // this.controls.dispose();
     
     this.controls.update();
 
@@ -330,6 +340,11 @@ class Cube {
       (gltf) => {
         const model = gltf.scene;
 
+        console.log('Loaded animations:', gltf.animations.map(a => a.name));
+        console.log('Total mixers:', this.mixers.length);
+        console.log('Scene graph:');
+        gltf.scene.traverse(o => console.log('-', o.name));
+
         if (model.children[13]) {
           model.children[13].material = new THREE.MeshBasicMaterial({ color: "#013656" });
           model.children[13].layers.enable(1);
@@ -342,14 +357,32 @@ class Cube {
 
         this.scene.add(model);
 
-        const mixer = new THREE.AnimationMixer(model);
-        gltf.animations.forEach(animation => {
-          const action = mixer.clipAction(animation);
-          action.clampWhenFinished = true;
-          action.setLoop(THREE.LoopOnce);
+        console.log("Loaded animations: ", gltf.animations.map(a => a.name));
+        console.log("Scene graph:");
+        model.children.forEach(child => console.log("-", child.name));
+        gltf.animations.forEach(clip => {
+          console.log("Track:", clip.tracks.map(t => t.name));
         });
 
-        this.mixers.push(mixer);
+        gltf.animations.forEach(clip => {
+          const trackName = clip.tracks[0]?.name || '';
+          const nodeName = trackName.split('.')[0];
+          const target = model.getObjectByName(nodeName);
+
+          if (target) {
+            const mixer = new THREE.AnimationMixer(target);
+            const action = mixer.clipAction(clip);
+            action.clampWhenFinished = true;
+            action.setLoop(THREE.LoopOnce);
+            action.play();
+
+            this.mixers.push(mixer);
+          } else {
+            console.warn(`❗Target node not found for ${clip.name}`);
+          }
+        });
+
+        console.log("Total mixers:", this.mixers.length);
       },
       (xhr) => {
         const total = xhr.total || 78252;
@@ -390,26 +423,21 @@ class Cube {
     this.scene.traverse((obj) => this.restoreMaterial(obj));
     this.finalComposer.render();
 
-     // Scroll-based animation
-    let scrollRatio = sc.top / (0.66667 * this.head.clientHeight);
-    scrollRatio = Math.max(0, Math.min(scrollRatio, 1.4999));
+    this.mixers.forEach((mixer, index) => {
+      const actions = mixer._actions;
+      if (actions && actions[0]) {
+        const duration = actions[0]._clip.duration;
+        const currentTime = this.scrollRatio * duration;
+        mixer.setTime(currentTime);
 
-    if (this.mixers?.length > 0) {
-      this.mixers.forEach((mixer) => {
-        const duration = mixer._actions[0]?.getClip()?.duration || 1;
-        mixer.setTime(scrollRatio * duration);
-      });
-    }
+        console.log(`Mixer ${index}: time=${currentTime.toFixed(2)} / ${duration.toFixed(2)}`);
+      }
+    });
 
     const isMobile = sc.width < 1024;
     const baseOffset = isMobile ? 0.5 : 0;
 
     let cameraOffsetY = baseOffset;
-    if (scrollRatio < 0.1 && baseOffset) {
-      cameraOffsetY = scrollRatio * baseOffset * 10;
-    } else if (scrollRatio > 0.5) {
-      cameraOffsetY = 2 * (scrollRatio - 0.5) + baseOffset;
-    }
 
     // Update camera position based on mousemove
     this.camera.position.lerp(this.mouseCameraTarget, 0.02);
