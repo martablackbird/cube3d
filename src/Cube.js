@@ -7,6 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
+import { AnimationMixer } from 'three';
 
 const sc = {
     _top: window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop,
@@ -106,52 +107,54 @@ const scroller = {
     _on: false,
 
     update: () => {
-        if (!scroller._on) return;
+      if (!scroller._on) return;
 
-        const needsResize = scroller.resizeRequest > 0;
-        if (needsResize) {
-            const height = scroller.target.clientHeight;
-            document.body.style.height = height + "px";
-            sc.maxTop = height;
-            scroller.resizeRequest = 0;
-        }
+      const needsResize = scroller.resizeRequest > 0;
+      if (needsResize) {
+        const height = scroller.target.clientHeight;
+        document.body.style.height = height + "px";
+        sc.maxTop = height;
+        scroller.resizeRequest = 0;
+      }
 
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
-        scroller.endY = scrollTop;
-        scroller.y += (scrollTop - scroller.y) * scroller.ease;
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
+      scroller.endY = scrollTop;
+      scroller.y += (scrollTop - scroller.y) * scroller.ease;
 
-        if (Math.abs(scrollTop - scroller.y) < 0.05 || needsResize) {
-            scroller.y = scrollTop;
-            scroller.scrollRequest = 0;
-        }
+      if (Math.abs(scrollTop - scroller.y) < 0.05 || needsResize) {
+        scroller.y = scrollTop;
+        scroller.scrollRequest = 0;
+      }
 
-        gsap.set(scroller.target, {
-            y: -scroller.y,
-            onUpdate: () => {
-                sc.updateScroll(-scroller.y);
-            }
-        });
+      // Apply transform
+      gsap.set(scroller.target, {
+        y: -scroller.y
+      });
 
-        requestId = scroller.scrollRequest > 0 ? requestAnimationFrame(scroller.update) : null;
+      // Call update manually after set (onUpdate doesn't work inside gsap.set)
+      sc.updateScroll(-scroller.y);
+
+      requestId = scroller.scrollRequest > 0 ? requestAnimationFrame(scroller.update) : null;
     },
 
     on: () => {
-        if (!scroller._on) {
-            scroller._on = true;
-            document.body.classList.add("assist-scroll");
-            scroller.resizeRequest = 1;
-            requestId = requestAnimationFrame(scroller.update);
-        }
+      if (!scroller._on) {
+        scroller._on = true;
+        document.body.classList.add("assist-scroll");
+        scroller.resizeRequest = 1;
+        requestId = requestAnimationFrame(scroller.update);
+      }
     },
 
     off: () => {
-        if (scroller._on) {
-            scroller._on = false;
-            gsap.killTweensOf(scroller.target);
-            document.body.classList.remove("assist-scroll");
-            document.body.style.height = "";
-            scroller.target.style.transform = "";
-        }
+      if (scroller._on) {
+        scroller._on = false;
+        if (requestId) cancelAnimationFrame(requestId);
+        gsap.killTweensOf(scroller.target);
+        document.body.classList.remove("assist-scroll");
+        document.body.style.height = "";
+        scroller.target.style.transform = "";
+      }
     }
 };
 
@@ -197,6 +200,7 @@ class Cube {
   constructor() {
     this.materials = {};
     this.mixers = [];
+    this.animations = [];
     this.head = document.getElementById("head");
     this.first_update = true;
     this.height = 1.4 * sc.height;
@@ -226,18 +230,22 @@ class Cube {
   }
 
   initRenderer() {
-    this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    this.renderer.setSize(sc.width, this.height);
-    // this.renderer.useLegacyLights = true; // change since deprecated
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace; // from outputEncoding
-    this.renderer.toneMapping = THREE.LinearToneMapping;
-    this.renderer.toneMappingExposure = Math.pow(0.94, 5);
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.domElement.id = "cube";
-    this.renderer.domElement.style.position = "fixed";
-    this.renderer.domElement.style.top = 0;
-    this.renderer.domElement.style.left = 0;
+    this.renderer = new THREE.WebGLRenderer({
+        alpha: !0,
+        antialias: !0
+    }),
+    this.renderer.setPixelRatio(window.devicePixelRatio),
+    this.renderer.setSize(sc.width, this.height),
+    this.renderer.physicallyCorrectLights = !0,
+    this.renderer.outputEncoding = THREE.sRGBEncoding,
+    this.renderer.toneMapping = THREE.LinearToneMapping,
+    this.renderer.toneMappingExposure = Math.pow(.94, 5),
+    this.renderer.shadowMap.enabled = !0,
+    this.renderer.shadowMap.type = THREE.PCFShadowMap,
+    this.renderer.domElement.id = "cube",
+    this.renderer.domElement.style.position = "fixed",
+    this.renderer.domElement.style.top = 0,
+    this.renderer.domElement.style.left = 0,
     document.body.appendChild(this.renderer.domElement);
   }
 
@@ -246,6 +254,8 @@ class Cube {
     this.bloomLayer.set(1);
 
     const renderScene = new RenderPass(this.scene, this.camera);
+    const shaderPass = new ShaderPass(CopyShader);
+    shaderPass.renderToScreen = true;
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(sc.width, this.height),
       2, 1, 0
@@ -281,22 +291,28 @@ class Cube {
 
   initControlls() {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.rotateSpeed = 0.3;
-    this.controls.zoomSpeed = 0.9;
+    this.controls.rotateSpeed = 0.1;
+    this.controls.zoomSpeed = 0.8;
     this.controls.minDistance = 5;
     this.controls.maxDistance = 5;
     this.controls.enableDamping = true;
+    this.controls.enableRotate = false;
     this.controls.dampingFactor = 0.05;
     this.controls.target.set(0, 1.2, 0);
+    // this.controls.dispose();
+    
     this.controls.update();
 
+    this.mouseCameraTarget = new THREE.Vector3(this.camera.position.x, this.camera.position.y, this.camera.position.z);
+
+    // Event listener mousemove
     document.addEventListener("mousemove", (e) => {
-      const deltaX = (e.clientX - sc.width / 2) / 500;
-      const deltaY = (e.clientY - this.height / 2) / 500;
-      this.camera.position.x += deltaX;
-      this.camera.position.y -= deltaY;
-      this.camera.lookAt(this.controls.target);
+      const deltaX = (e.clientX - window.innerWidth / 2) / 500;
+      const deltaY = (e.clientY - window.innerHeight / 2) / 500;
+      this.mouseCameraTarget.x = deltaX;
+      this.mouseCameraTarget.y = 1.2 - deltaY;
     });
+
   }
 
   initLights() {
@@ -326,17 +342,21 @@ class Cube {
 
         this.scene.add(model);
 
+        const mixer = new THREE.AnimationMixer(model);
         gltf.animations.forEach(animation => {
-          const mixer = new THREE.AnimationMixer(model);
-          this.mixers.push(mixer);
-          mixer.clipAction(animation).play();
+          const action = mixer.clipAction(animation);
+          action.clampWhenFinished = true;
+          action.setLoop(THREE.LoopOnce);
         });
+
+        this.mixers.push(mixer);
       },
       (xhr) => {
         const total = xhr.total || 78252;
         const progress = xhr.loaded / total;
         if (progress === 1) {
           this.initControlls();
+          this.update("resize");
           this.render();
         }
       },
@@ -370,19 +390,34 @@ class Cube {
     this.scene.traverse((obj) => this.restoreMaterial(obj));
     this.finalComposer.render();
 
-    let e = sc.top / (0.66667 * this.head.clientHeight);
-    e = Math.max(0, Math.min(e, 1.4999));
-    const t = sc.width < 1024 ? 0.5 : 0;
-    let s = (t && e < 0.1) ? e * t * 10 : t;
-    if (e > 0.5) s = 2 * (e - 0.5) + t;
+     // Scroll-based animation
+    let scrollRatio = sc.top / (0.66667 * this.head.clientHeight);
+    scrollRatio = Math.max(0, Math.min(scrollRatio, 1.4999));
 
-    if (s < 2) {
-      this.controls.target.set(0, 1.2 - 3 * s, 0);
-      this.controls.update();
+    if (this.mixers?.length > 0) {
+      this.mixers.forEach((mixer) => {
+        const duration = mixer._actions[0]?.getClip()?.duration || 1;
+        mixer.setTime(scrollRatio * duration);
+      });
     }
 
-    for (let i = 0; i < this.mixers.length; i++) {
-      this.mixers[i].setTime(e);
+    const isMobile = sc.width < 1024;
+    const baseOffset = isMobile ? 0.5 : 0;
+
+    let cameraOffsetY = baseOffset;
+    if (scrollRatio < 0.1 && baseOffset) {
+      cameraOffsetY = scrollRatio * baseOffset * 10;
+    } else if (scrollRatio > 0.5) {
+      cameraOffsetY = 2 * (scrollRatio - 0.5) + baseOffset;
+    }
+
+    // Update camera position based on mousemove
+    this.camera.position.lerp(this.mouseCameraTarget, 0.02);
+    this.camera.lookAt(this.controls?.target || new THREE.Vector3(0, 1.2, 0));
+
+    if (cameraOffsetY < 2) {
+      this.controls.target.set(0, 1.2 - 3 * cameraOffsetY, 0);
+      this.controls.update();
     }
   }
 
