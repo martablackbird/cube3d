@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { gsap } from "gsap";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -7,194 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
-import { AnimationMixer } from 'three';
-
-const sc = {
-    _top: window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop,
-    top: window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop,
-    maxTop: document.documentElement.scrollHeight - (window.innerHeight || document.documentElement.clientHeight),
-    delta: 0,
-    _width: 0,
-    _height: 0,
-    width: window.innerWidth || document.documentElement.clientWidth,
-    height: window.innerHeight || document.documentElement.clientHeight,
-    updates: {},
-    _update_id: 0,
-
-    addUpdate(fn) {
-        sc.updates[++sc._update_id] = fn;
-        return sc._update_id;
-    },
-
-    deleteUpdate(id) {
-        delete sc.updates[id];
-    },
-
-    updateScroll(newTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop) {
-        sc._top = sc.top;
-        sc.top = newTop;
-        sc.delta = sc.top - sc._top;
-        if (Math.abs(sc.delta) > 200) sc.delta = 0;
-
-        for (const id in sc.updates) {
-            if (typeof sc.updates[id] === "function") {
-                sc.updates[id]("scroll");
-            }
-        }
-    },
-
-    update(eventType = "resize") {
-        if (eventType === "scroll") {
-            sc.updateScroll();
-        } else {
-            sc._width = sc.width;
-            sc._height = sc.height;
-            sc.width = window.innerWidth || document.documentElement.clientWidth;
-            sc.height = window.innerHeight || document.documentElement.clientHeight;
-            sc.maxTop = document.documentElement.scrollHeight - sc.height;
-        }
-
-        for (const id in sc.updates) {
-            if (typeof sc.updates[id] === "function") {
-                sc.updates[id](eventType);
-            }
-        }
-    },
-
-    lerp(a, b, t) {
-        return (1 - t) * a + t * b;
-    },
-
-    _webp: undefined,
-    webp() {
-        if (sc._webp === undefined) {
-            sc._webp = false;
-            const canvas = document.createElement("canvas");
-            if (canvas.getContext && canvas.getContext("2d")) {
-                sc._webp = canvas.toDataURL("image/webp").indexOf("data:image/webp") === 0;
-            }
-        }
-        return sc._webp;
-    },
-
-    loadScript(url, callback) {
-        const s = document.createElement("script");
-        s.type = "text/javascript";
-        if (s.readyState) {
-            s.onreadystatechange = function () {
-                if (s.readyState === "loaded" || s.readyState === "complete") {
-                    s.onreadystatechange = null;
-                    callback();
-                }
-            };
-        } else {
-            s.onload = callback;
-        }
-        s.src = url;
-        document.head.appendChild(s);
-    }
-};
-
-let requestId = null;
-
-const scroller = {
-    target: document.querySelector(".scroll-container"),
-    ease: 0.05,
-    endY: 0,
-    y: 0,
-    resizeRequest: 1,
-    scrollRequest: 0,
-    _on: false,
-
-    update: () => {
-      if (!scroller._on) return;
-
-      const needsResize = scroller.resizeRequest > 0;
-      if (needsResize) {
-        const height = scroller.target.clientHeight;
-        document.body.style.height = height + "px";
-        sc.maxTop = height;
-        scroller.resizeRequest = 0;
-      }
-
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
-      scroller.endY = scrollTop;
-      scroller.y += (scrollTop - scroller.y) * scroller.ease;
-
-      if (Math.abs(scrollTop - scroller.y) < 0.05 || needsResize) {
-        scroller.y = scrollTop;
-        scroller.scrollRequest = 0;
-      }
-
-      // Apply transform
-      gsap.set(scroller.target, {
-        y: -scroller.y
-      });
-
-      // Call update manually after set (onUpdate doesn't work inside gsap.set)
-      sc.updateScroll(-scroller.y);
-
-      requestId = scroller.scrollRequest > 0 ? requestAnimationFrame(scroller.update) : null;
-    },
-
-    on: () => {
-      if (!scroller._on) {
-        scroller._on = true;
-        document.body.classList.add("assist-scroll");
-        scroller.resizeRequest = 1;
-        requestId = requestAnimationFrame(scroller.update);
-      }
-    },
-
-    off: () => {
-      if (scroller._on) {
-        scroller._on = false;
-        if (requestId) cancelAnimationFrame(requestId);
-        gsap.killTweensOf(scroller.target);
-        document.body.classList.remove("assist-scroll");
-        document.body.style.height = "";
-        scroller.target.style.transform = "";
-      }
-    }
-};
-
-sc.update = (eventType = "resize") => {
-    if (scroller._on) {
-        scroller.scrollRequest++;
-        if (!requestId) requestId = requestAnimationFrame(scroller.update);
-    }
-
-    if (eventType === "scroll") {
-        if (scroller._on) return;
-        sc.updateScroll();
-    } else {
-        sc._width = sc.width;
-        sc._height = sc.height;
-        sc.width = window.innerWidth || document.documentElement.clientWidth;
-        sc.height = window.innerHeight || document.documentElement.clientHeight;
-
-        if (scroller._on) {
-            scroller.resizeRequest = 1;
-        } else {
-            sc.maxTop = document.documentElement.scrollHeight - sc.height;
-            sc.width < 1024 ? scroller.off() : scroller.on();
-        }
-    }
-
-    for (const id in sc.updates) {
-        if (typeof sc.updates[id] === "function") {
-            sc.updates[id](eventType);
-        }
-    }
-};
-
-window.addEventListener("scroll", () => sc.update("scroll"));
-window.addEventListener("resize", () => sc.update("resize"));
-
-window.addEventListener("load", () => {
-    sc.width < 1024 ? scroller.off() : scroller.on();
-});
-
+import { sc } from "./sc.js";
 
 class Cube {
   constructor() {
@@ -222,7 +34,6 @@ class Cube {
       this.update(e);
     });
 
-    //event listener for scroll ratio
     window.addEventListener("scroll", () => {
       const scrollTop = window.scrollY;
       const docHeight = document.documentElement.scrollHeight - window.innerHeight;
@@ -253,7 +64,7 @@ class Cube {
     this.renderer.outputEncoding = THREE.sRGBEncoding,
     this.renderer.toneMapping = THREE.LinearToneMapping,
     this.renderer.toneMappingExposure = Math.pow(.94, 5),
-    this.renderer.shadowMap.enabled = !0,
+    this.renderer.shadowMap.enabled = true,
     this.renderer.shadowMap.type = THREE.PCFShadowMap,
     this.renderer.domElement.id = "cube",
     this.renderer.domElement.style.position = "fixed",
@@ -328,11 +139,14 @@ class Cube {
   }
 
   initLights() {
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(-10, 10, 0);
-    light.target.position.set(-5, 0, 0);
-    this.scene.add(light);
-    this.scene.add(light.target);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+    this.scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(-10, 10, 0);
+    dirLight.target.position.set(-5, 0, 0);
+    this.scene.add(dirLight);
+    this.scene.add(dirLight.target);
   }
 
   load() {
@@ -341,8 +155,6 @@ class Cube {
       new URL('../public/assets/js/cube3d/cube_v1.4_backup3.1.glb', import.meta.url).href,
       (gltf) => {
         const model = gltf.scene;
-
-        gltf.scene.traverse(o => console.log('-', o.name));
 
         if (model.children[13]) {
           model.children[13].material = new THREE.MeshBasicMaterial({ color: "#013656" });
@@ -355,8 +167,6 @@ class Cube {
         });
 
         this.scene.add(model);
-
-        model.children.forEach(child => console.log("-", child.name));
 
         gltf.animations.forEach(clip => {
           const trackName = clip.tracks[0]?.name || '';
@@ -376,8 +186,6 @@ class Cube {
             console.warn(`Target node not found for ${clip.name}`);
           }
         });
-
-        console.log("Total mixers:", this.mixers.length);
       },
       (xhr) => {
         const total = xhr.total || 78252;
@@ -486,7 +294,3 @@ class Cube {
 
 const cube = new Cube();
 cube.init();
-
-
-
-console.log("Cube3D initialized");

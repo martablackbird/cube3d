@@ -1,5 +1,8 @@
-// src/utils/sc.js
-const sc = {
+import { gsap } from "gsap";
+
+let requestId = null;
+
+export const sc = {
     _top: window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop,
     top: window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop,
     maxTop: document.documentElement.scrollHeight - (window.innerHeight || document.documentElement.clientHeight),
@@ -85,4 +88,94 @@ const sc = {
     }
 };
 
-export default sc;
+export const scroller = {
+    target: document.querySelector(".scroll-container"),
+    ease: 0.05,
+    endY: 0,
+    y: 0,
+    resizeRequest: 1,
+    scrollRequest: 0,
+    _on: false,
+
+    update: () => {
+        if (!scroller._on) return;
+
+        const needsResize = scroller.resizeRequest > 0;
+        if (needsResize) {
+            const height = scroller.target.clientHeight;
+            document.body.style.height = height + "px";
+            sc.maxTop = height;
+            scroller.resizeRequest = 0;
+        }
+
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
+        scroller.endY = scrollTop;
+        scroller.y += (scrollTop - scroller.y) * scroller.ease;
+
+        if (Math.abs(scrollTop - scroller.y) < 0.05 || needsResize) {
+            scroller.y = scrollTop;
+            scroller.scrollRequest = 0;
+        }
+
+        gsap.set(scroller.target, { y: -scroller.y });
+        sc.updateScroll(-scroller.y);
+
+        requestId = scroller.scrollRequest > 0 ? requestAnimationFrame(scroller.update) : null;
+    },
+
+    on: () => {
+        if (!scroller._on) {
+            scroller._on = true;
+            document.body.classList.add("assist-scroll");
+            scroller.resizeRequest = 1;
+            requestId = requestAnimationFrame(scroller.update);
+        }
+    },
+
+    off: () => {
+        if (scroller._on) {
+            scroller._on = false;
+            if (requestId) cancelAnimationFrame(requestId);
+            gsap.killTweensOf(scroller.target);
+            document.body.classList.remove("assist-scroll");
+            document.body.style.height = "";
+            scroller.target.style.transform = "";
+        }
+    }
+};
+
+sc.update = (eventType = "resize") => {
+    if (scroller._on) {
+        scroller.scrollRequest++;
+        if (!requestId) requestId = requestAnimationFrame(scroller.update);
+    }
+
+    if (eventType === "scroll") {
+        if (scroller._on) return;
+        sc.updateScroll();
+    } else {
+        sc._width = sc.width;
+        sc._height = sc.height;
+        sc.width = window.innerWidth || document.documentElement.clientWidth;
+        sc.height = window.innerHeight || document.documentElement.clientHeight;
+
+        if (scroller._on) {
+            scroller.resizeRequest = 1;
+        } else {
+            sc.maxTop = document.documentElement.scrollHeight - sc.height;
+            sc.width < 1024 ? scroller.off() : scroller.on();
+        }
+    }
+
+    for (const id in sc.updates) {
+        if (typeof sc.updates[id] === "function") {
+            sc.updates[id](eventType);
+        }
+    }
+};
+
+window.addEventListener("scroll", () => sc.update("scroll"));
+window.addEventListener("resize", () => sc.update("resize"));
+window.addEventListener("load", () => {
+    sc.width < 1024 ? scroller.off() : scroller.on();
+});
